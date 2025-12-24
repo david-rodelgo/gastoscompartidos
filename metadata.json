@@ -1,0 +1,7 @@
+{
+  "name": "GASTOS VIAJES",
+  "description": "Una aplicación profesional para la gestión de gastos compartidos en viajes por familias. Permite roles de administrador, reparto equitativo o por integrantes, y adjuntar fotos de tickets.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
