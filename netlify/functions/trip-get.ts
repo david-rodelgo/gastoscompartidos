@@ -5,6 +5,7 @@ const sql = neon(process.env.NETLIFY_DATABASE_URL);
 
 export const handler: Handler = async (event) => {
   try {
+    const dbInfo = await sql("select current_database() as db, current_schema() as schema");
     const id = event.queryStringParameters?.id;
     const k = event.queryStringParameters?.k;
 
