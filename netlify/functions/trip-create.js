@@ -14,10 +14,11 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: "Faltan campos (id,k,group)" };
     }
 
-    await sql(
-      "insert into trip_groups (id, access_key, data) values ($1,$2,$3::jsonb)",
-      [id, k, JSON.stringify(group)]
-    );
+   await sql(
+  "insert into public.trip_groups (id, access_key, data) values ($1,$2,$3::jsonb)",
+  [id, k, JSON.stringify(group)]
+);
+
 
     return { statusCode: 200, body: "OK" };
   } catch (e) {
