@@ -309,7 +309,7 @@ const App: React.FC = () => {
             currentFamilyId={currentFamily?.id || ''}
           />
         )}
-        {view === 'split' && <SplitView tripData={tripData!={tripData!} onToggleSettlement={toggleSettlement} />}
+        {view === 'split' && <SplitView tripData={tripData!} onToggleSettlement={toggleSettlement} />}
         {view === 'settings' && (
           <SettingsView
             tripData={tripData!}
