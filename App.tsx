@@ -39,18 +39,34 @@ const App: React.FC = () => {
   const [myTrips, setMyTrips] = useState<MyTrip[]>([]);
 
   // --- Backend (Netlify Functions + Neon) ---
-  const apiUrl = (fn: string) => `${window.location.origin}/.netlify/functions/${fn}`;
+  const apiUrl = (fn: string) => `/.netlify/functions/${fn}`;
 
   const fetchJson = async (url: string, init?: RequestInit) => {
-    const res = await fetch(url, init);
-    const text = await res.text();
-    if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
+  const res = await fetch(url, {
+    ...init,
+    // Importante: en Netlify mejor ruta relativa y sin caché
+    cache: 'no-store',
+    headers: {
+      ...(init?.headers || {}),
+      // Si es POST/PUT y mandas body, asegúrate de JSON
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {})
     }
-  };
+  });
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    // Esto te mostrará exactamente lo que devuelve la function
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
 
   const addToMyTrips = (id: string, k: string, name: string) => {
     const newList: MyTrip[] = [{ id, k, name, date: new Date().toISOString() }, ...myTrips.filter(t => t.id !== id)];
