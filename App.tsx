@@ -39,8 +39,6 @@ const App: React.FC = () => {
   const [myTrips, setMyTrips] = useState<MyTrip[]>([]);
 
   // --- Backend (Netlify Functions + Neon) ---
-  // Se guarda en Neon mediante funciones serverless.
-  // En localStorage solo guardamos "Mis viajes" (lista) y "last_family".
   const apiUrl = (fn: string) => `${window.location.origin}/.netlify/functions/${fn}`;
 
   const fetchJson = async (url: string, init?: RequestInit) => {
@@ -62,7 +60,7 @@ const App: React.FC = () => {
 
   const setUrlParams = (id: string, k: string) => {
     const url = new URL(window.location.href);
-    url.hash = ''; // dejamos de usar hash para evitar confusiones
+    url.hash = '';
     url.searchParams.set('id', id);
     url.searchParams.set('k', k);
     window.history.replaceState({}, '', url.toString());
@@ -76,30 +74,27 @@ const App: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const loadGroup = async (id: string, k: string) => {
-    try {
-      const data = await fetchJson(`${apiUrl('trip-get')}?id=${encodeURIComponent(id)}&k=${encodeURIComponent(k)}`);
-      if (!data) throw new Error('Vacío');
+  // IMPORTANT: devuelve el TripGroup cargado para poder usarlo de forma fiable (sin depender del timing del setState)
+  const loadGroup = async (id: string, k: string): Promise<TripGroup> => {
+    const data = await fetchJson(`${apiUrl('trip-get')}?id=${encodeURIComponent(id)}&k=${encodeURIComponent(k)}`);
+    if (!data) throw new Error('Vacío');
 
-      setTripData(data as TripGroup);
-      setUrlParams(id, k);
+    const group = data as TripGroup;
 
-      const lastFamilyId = localStorage.getItem(`last_family_${id}`);
-      if (lastFamilyId) setCurrentFamilyId(lastFamilyId);
+    setTripData(group);
+    setUrlParams(id, k);
 
-      setView('dashboard');
-      addToMyTrips(id, k, (data as any).name || id);
-    } catch (e) {
-      console.error(e);
-      alert('Viaje no encontrado o clave incorrecta.');
-      clearUrlParams();
-      setTripData(null);
-      setCurrentFamilyId(null);
-      setView('home');
-    }
+    const lastFamilyId = localStorage.getItem(`last_family_${id}`);
+    if (lastFamilyId) setCurrentFamilyId(lastFamilyId);
+
+    setView('dashboard');
+    addToMyTrips(id, k, (group as any).name || id);
+
+    return group;
   };
 
   const saveGroup = async (data: TripGroup, k: string) => {
+    if (!k) throw new Error('Falta la clave (k) para guardar.');
     await fetchJson(apiUrl('trip-save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -108,6 +103,8 @@ const App: React.FC = () => {
     setTripData({ ...data });
     addToMyTrips(data.id, k, data.name);
   };
+
+  const getKFromUrl = () => new URL(window.location.href).searchParams.get('k') || '';
 
   const exitTrip = () => {
     setTripData(null);
@@ -158,40 +155,51 @@ const App: React.FC = () => {
   };
 
   const joinGroup = async (groupId: string, accessKey: string, familyName: string, members: number) => {
-    if (!groupId || !accessKey) return alert('Falta ID o clave');
+    if (!groupId || !accessKey) return alert('Falta ID o clave (k)');
     if (!familyName) return alert('Falta el nombre de tu familia');
 
-    await loadGroup(groupId, accessKey);
+    try {
+      const group = await loadGroup(groupId, accessKey);
 
-    setTripData(prev => {
-      if (!prev) return prev;
+      const normalized = familyName.trim().toLowerCase();
+      const existing = group.families.find(f => f.name.trim().toLowerCase() === normalized);
 
-      // Evitar duplicar familia si el usuario recarga / pulsa dos veces
-      const already = prev.families.some(f => f.name.trim().toLowerCase() === familyName.trim().toLowerCase());
-      const newFamilyId = uuidv4();
-      const newFamily: Family = { id: newFamilyId, name: familyName, memberCount: members, role: Role.USER };
+      let updatedGroup = group;
+      let familyToSelectId = existing?.id;
 
-      const updated = already ? prev : { ...prev, families: [...prev.families, newFamily] };
+      if (!existing) {
+        const newFamilyId = uuidv4();
+        const newFamily: Family = { id: newFamilyId, name: familyName, memberCount: members, role: Role.USER };
+        updatedGroup = { ...group, families: [...group.families, newFamily] };
+        familyToSelectId = newFamilyId;
 
-      saveGroup(updated, accessKey).catch(console.error);
-
-      const familyToSelect = already
-        ? (prev.families.find(f => f.name.trim().toLowerCase() === familyName.trim().toLowerCase())?.id || prev.families[0]?.id)
-        : newFamilyId;
-
-      if (familyToSelect) {
-        setCurrentFamilyId(familyToSelect);
-        localStorage.setItem(`last_family_${groupId}`, familyToSelect);
+        // Guardamos el cambio
+        await saveGroup(updatedGroup, accessKey);
       }
 
+      if (familyToSelectId) {
+        setCurrentFamilyId(familyToSelectId);
+        localStorage.setItem(`last_family_${groupId}`, familyToSelectId);
+      }
+
+      setTripData(updatedGroup);
       setView('dashboard');
-      return updated;
-    });
+      setUrlParams(groupId, accessKey);
+    } catch (e) {
+      console.error(e);
+      alert('Viaje no encontrado o clave incorrecta.');
+      clearUrlParams();
+      setTripData(null);
+      setCurrentFamilyId(null);
+      setView('home');
+    }
   };
 
   const addFamilyToGroup = (name: string, members: number) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const newFamily: Family = { id: uuidv4(), name, memberCount: members, role: Role.USER };
     const updated = { ...tripData, families: [...tripData.families, newFamily] };
     saveGroup(updated, k).catch(console.error);
@@ -199,7 +207,9 @@ const App: React.FC = () => {
 
   const addExpense = (concept: string, amount: number, familyId: string, imageUrl?: string) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const newExpense: Expense = {
       id: uuidv4(),
       concept,
@@ -214,28 +224,36 @@ const App: React.FC = () => {
 
   const deleteExpense = (id: string) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const updated = { ...tripData, expenses: tripData.expenses.filter(e => e.id !== id) };
     saveGroup(updated, k).catch(console.error);
   };
 
   const updateRole = (familyId: string, newRole: Role) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const updatedFamilies = tripData.families.map(f => (f.id === familyId ? { ...f, role: newRole } : f));
     saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
   };
 
   const updateFamilyCount = (familyId: string, count: number) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const updatedFamilies = tripData.families.map(f => (f.id === familyId ? { ...f, memberCount: count } : f));
     saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
   };
 
   const toggleSettlement = (transferKey: string) => {
     if (!tripData) return;
-    const k = new URL(window.location.href).searchParams.get('k') || '';
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
     const settled = tripData.settledTransfers || [];
     const updatedSettled = settled.includes(transferKey) ? settled.filter(x => x !== transferKey) : [...settled, transferKey];
     saveGroup({ ...tripData, settledTransfers: updatedSettled }, k).catch(console.error);
@@ -255,20 +273,28 @@ const App: React.FC = () => {
     const id = sp.get('id');
     const k = sp.get('k');
     if (id && k) {
-      loadGroup(id, k);
+      loadGroup(id, k).catch(e => {
+        console.error(e);
+        alert('Viaje no encontrado o clave incorrecta.');
+        clearUrlParams();
+      });
       return;
     }
 
-    // Compatibilidad mínima con enlaces antiguos #group_XXXX:
-    // Si existe en "Mis viajes", intentamos cargarlo usando la k guardada.
+    // Compatibilidad mínima con enlaces antiguos #group_XXXX
     const hash = window.location.hash.replace('#', '');
     if (hash && hash.startsWith('group_')) {
       const gId = hash.replace('group_', '');
-      const found = (saved ? (() => { try { return JSON.parse(saved) as MyTrip[]; } catch { return []; } })() : []).find(t => t.id === gId);
+      let list: MyTrip[] = [];
+      try {
+        list = saved ? (JSON.parse(saved) as MyTrip[]) : [];
+      } catch {}
+      const found = list.find(t => t.id === gId);
       if (found?.k) {
-        loadGroup(found.id, found.k);
+        loadGroup(found.id, found.k).catch(() => {
+          window.location.hash = '';
+        });
       } else {
-        // no rompemos UI, solo limpiamos hash
         window.location.hash = '';
       }
     }
@@ -278,7 +304,11 @@ const App: React.FC = () => {
     return (
       <WelcomeScreen
         myTrips={myTrips}
-        onSelectTrip={(id, k) => loadGroup(id, k)}
+        onSelectTrip={(id, k) => loadGroup(id, k).catch(e => {
+          console.error(e);
+          alert('Viaje no encontrado o clave incorrecta.');
+          clearUrlParams();
+        })}
         onCreateTrip={() => setIsCreating(true)}
         onJoinTrip={() => {
           setIsCreating(false);
@@ -547,6 +577,7 @@ const WelcomeScreen: React.FC<{
                   onChange={e => setFormData({ ...formData, family: e.target.value })}
                 />
               </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Personas</label>
                 <div className="flex items-center bg-slate-50 border border-slate-100 rounded-2xl p-2">
@@ -565,6 +596,7 @@ const WelcomeScreen: React.FC<{
                   </button>
                 </div>
               </div>
+
               <button
                 onClick={() => joinGroup(formData.gId, formData.k, formData.family, formData.members)}
                 className="w-full bg-emerald-600 text-white font-bold py-5 rounded-[1.25rem] shadow-xl hover:bg-emerald-700 transition-all mt-4"
@@ -578,15 +610,6 @@ const WelcomeScreen: React.FC<{
     </div>
   );
 };
-
-// --- El resto de componentes (Dashboard, ExpensesView, SplitView, SettingsView, NavButton) ---
-// Son idénticos a tu versión original (no hay que tocar UI).
-// Pega aquí exactamente tus componentes tal y como los tienes, sin cambios.
-
-// ---------------
-// IMPORTANTÍSIMO:
-// En tu pegado original de antes, todo esto ya está y no hace falta tocarlo.
-// ---------------
 
 const Dashboard: React.FC<{ tripData: TripGroup; currentFamily: Family }> = ({ tripData, currentFamily }) => {
   const totalSpent = tripData.expenses.reduce((sum, e) => sum + e.amount, 0);
