@@ -411,16 +411,73 @@ const WelcomeScreen: React.FC<{
   onCreateTrip: () => void;
   onJoinTrip: () => void;
   isCreating: boolean;
-  createGroup: (name: string, family: string, members: number) => void;
-  joinGroup: (id: string, k: string, family: string, members: number) => void;
+  createGroup: (name: string, family: string, members: number) => Promise<void> | void;
+  joinGroup: (id: string, k: string, family: string, members: number) => Promise<void> | void;
   onBack: () => void;
 }> = ({ myTrips, onSelectTrip, isCreating, createGroup, joinGroup }) => {
   const [formData, setFormData] = useState({ name: '', family: '', members: 1, gId: '', k: '' });
   const [mode, setMode] = useState<'list' | 'create' | 'join'>('list');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (isCreating) setMode('create');
   }, [isCreating]);
+
+  const safeCreate = async () => {
+    if (submitting) return;
+
+    const name = formData.name.trim();
+    const family = formData.family.trim();
+    const members = Number(formData.members) || 1;
+
+    if (!name || !family) {
+      alert('Por favor rellena el nombre del viaje y tu familia.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await Promise.resolve(createGroup(name, family, members));
+    } catch (e: any) {
+      console.error(e);
+      const msg =
+        typeof e?.message === 'string'
+          ? e.message
+          : 'No se pudo crear el viaje. Revisa que las Netlify Functions estén desplegadas.';
+      alert(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const safeJoin = async () => {
+    if (submitting) return;
+
+    const gId = formData.gId.trim();
+    const k = formData.k.trim();
+    const family = formData.family.trim();
+    const members = Number(formData.members) || 1;
+
+    if (!gId || !k) {
+      alert('Falta ID o clave (k).');
+      return;
+    }
+    if (!family) {
+      alert('Falta el nombre de tu familia.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await Promise.resolve(joinGroup(gId, k, family, members));
+    } catch (e: any) {
+      console.error(e);
+      const msg = typeof e?.message === 'string' ? e.message : 'No se pudo unir al viaje.';
+      alert(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (mode === 'list') {
     return (
@@ -443,6 +500,7 @@ const WelcomeScreen: React.FC<{
               myTrips.map(trip => (
                 <button
                   key={trip.id}
+                  type="button"
                   onClick={() => onSelectTrip(trip.id, trip.k)}
                   className="w-full flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-white hover:shadow-lg transition-all group"
                 >
@@ -460,6 +518,7 @@ const WelcomeScreen: React.FC<{
 
           <div className="grid grid-cols-2 gap-4">
             <button
+              type="button"
               onClick={() => {
                 setFormData({ name: '', family: '', members: 1, gId: '', k: '' });
                 setMode('create');
@@ -470,6 +529,7 @@ const WelcomeScreen: React.FC<{
               <span className="text-xs font-black uppercase tracking-widest">Crear</span>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setFormData({ name: '', family: '', members: 1, gId: '', k: '' });
                 setMode('join');
@@ -488,13 +548,15 @@ const WelcomeScreen: React.FC<{
   return (
     <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-4">
       <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full relative">
-        <button onClick={() => setMode('list')} className="absolute top-8 left-8 text-slate-400 hover:text-slate-600">
+        <button type="button" onClick={() => setMode('list')} className="absolute top-8 left-8 text-slate-400 hover:text-slate-600">
           <ArrowRight size={24} className="rotate-180" />
         </button>
+
         <div className="text-center mb-10">
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">{mode === 'create' ? 'Nuevo Viaje' : 'Unirse a Viaje'}</h2>
           <p className="text-slate-500 mt-2 font-medium">{mode === 'create' ? 'Configura tu grupo' : 'Introduce el ID y la clave (k) del grupo'}</p>
         </div>
+
         <div className="space-y-5">
           {mode === 'create' ? (
             <>
@@ -508,6 +570,7 @@ const WelcomeScreen: React.FC<{
                   onChange={e => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Tu Familia</label>
                 <input
@@ -518,10 +581,12 @@ const WelcomeScreen: React.FC<{
                   onChange={e => setFormData({ ...formData, family: e.target.value })}
                 />
               </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Número de Personas</label>
                 <div className="flex items-center bg-slate-50 border border-slate-100 rounded-2xl p-2">
                   <button
+                    type="button"
                     onClick={() => setFormData({ ...formData, members: Math.max(1, formData.members - 1) })}
                     className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-indigo-600"
                   >
@@ -529,6 +594,7 @@ const WelcomeScreen: React.FC<{
                   </button>
                   <span className="flex-1 text-center font-bold text-lg">{formData.members}</span>
                   <button
+                    type="button"
                     onClick={() => setFormData({ ...formData, members: formData.members + 1 })}
                     className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-indigo-600"
                   >
@@ -536,11 +602,16 @@ const WelcomeScreen: React.FC<{
                   </button>
                 </div>
               </div>
+
               <button
-                onClick={() => createGroup(formData.name, formData.family, formData.members)}
-                className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[1.25rem] shadow-xl hover:bg-indigo-700 transition-all mt-4"
+                type="button"
+                disabled={submitting}
+                onClick={safeCreate}
+                className={`w-full text-white font-bold py-5 rounded-[1.25rem] shadow-xl transition-all mt-4 ${
+                  submitting ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
               >
-                Comenzar Viaje
+                {submitting ? 'Creando…' : 'Comenzar Viaje'}
               </button>
             </>
           ) : (
@@ -582,6 +653,7 @@ const WelcomeScreen: React.FC<{
                 <label className="text-xs font-bold text-slate-400 uppercase ml-1">Personas</label>
                 <div className="flex items-center bg-slate-50 border border-slate-100 rounded-2xl p-2">
                   <button
+                    type="button"
                     onClick={() => setFormData({ ...formData, members: Math.max(1, formData.members - 1) })}
                     className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-emerald-600"
                   >
@@ -589,6 +661,7 @@ const WelcomeScreen: React.FC<{
                   </button>
                   <span className="flex-1 text-center font-bold text-lg">{formData.members}</span>
                   <button
+                    type="button"
                     onClick={() => setFormData({ ...formData, members: formData.members + 1 })}
                     className="w-12 h-12 flex items-center justify-center text-slate-400 hover:text-emerald-600"
                   >
@@ -598,10 +671,14 @@ const WelcomeScreen: React.FC<{
               </div>
 
               <button
-                onClick={() => joinGroup(formData.gId, formData.k, formData.family, formData.members)}
-                className="w-full bg-emerald-600 text-white font-bold py-5 rounded-[1.25rem] shadow-xl hover:bg-emerald-700 transition-all mt-4"
+                type="button"
+                disabled={submitting}
+                onClick={safeJoin}
+                className={`w-full text-white font-bold py-5 rounded-[1.25rem] shadow-xl transition-all mt-4 ${
+                  submitting ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
               >
-                Unirse ahora
+                {submitting ? 'Conectando…' : 'Unirse ahora'}
               </button>
             </>
           )}
@@ -610,6 +687,7 @@ const WelcomeScreen: React.FC<{
     </div>
   );
 };
+
 
 const Dashboard: React.FC<{ tripData: TripGroup; currentFamily: Family }> = ({ tripData, currentFamily }) => {
   const totalSpent = tripData.expenses.reduce((sum, e) => sum + e.amount, 0);
