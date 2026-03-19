@@ -38,35 +38,30 @@ const App: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [myTrips, setMyTrips] = useState<MyTrip[]>([]);
 
-  // --- Backend (Netlify Functions + Neon) ---
   const apiUrl = (fn: string) => `/.netlify/functions/${fn}`;
 
   const fetchJson = async (url: string, init?: RequestInit) => {
-  const res = await fetch(url, {
-    ...init,
-    // Importante: en Netlify mejor ruta relativa y sin caché
-    cache: 'no-store',
-    headers: {
-      ...(init?.headers || {}),
-      // Si es POST/PUT y mandas body, asegúrate de JSON
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {})
+    const res = await fetch(url, {
+      ...init,
+      cache: 'no-store',
+      headers: {
+        ...(init?.headers || {}),
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {})
+      }
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      throw new Error(text || `HTTP ${res.status}`);
     }
-  });
 
-  const text = await res.text();
-
-  if (!res.ok) {
-    // Esto te mostrará exactamente lo que devuelve la function
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-};
-
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  };
 
   const addToMyTrips = (id: string, k: string, name: string) => {
     const newList: MyTrip[] = [{ id, k, name, date: new Date().toISOString() }, ...myTrips.filter(t => t.id !== id)];
@@ -90,7 +85,6 @@ const App: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
-  // IMPORTANT: devuelve el TripGroup cargado para poder usarlo de forma fiable (sin depender del timing del setState)
   const loadGroup = async (id: string, k: string): Promise<TripGroup> => {
     const data = await fetchJson(`${apiUrl('trip-get')}?id=${encodeURIComponent(id)}&k=${encodeURIComponent(k)}`);
     if (!data) throw new Error('Vacío');
@@ -129,7 +123,6 @@ const App: React.FC = () => {
     clearUrlParams();
   };
 
-  // Nota: sin función "trip-delete" no borra en BBDD. Solo quita el acceso rápido en este dispositivo.
   const deleteTripFromMyList = (id: string) => {
     if (!confirm('¿Quieres quitar este viaje de "Mis viajes" en este dispositivo? (No borra la base de datos)')) return;
     const updated = myTrips.filter(t => t.id !== id);
@@ -154,14 +147,12 @@ const App: React.FC = () => {
       settledTransfers: []
     };
 
-    // 1) Crear “registro base” (id + k) en la tabla
     await fetchJson(apiUrl('trip-create'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: groupId, k: accessKey, group: { name, createdAt: new Date().toISOString() } })
     });
 
-    // 2) Guardar JSON completo del viaje
     await saveGroup(newGroup, accessKey);
 
     setCurrentFamilyId(adminId);
@@ -189,7 +180,6 @@ const App: React.FC = () => {
         updatedGroup = { ...group, families: [...group.families, newFamily] };
         familyToSelectId = newFamilyId;
 
-        // Guardamos el cambio
         await saveGroup(updatedGroup, accessKey);
       }
 
@@ -248,26 +238,26 @@ const App: React.FC = () => {
   };
 
   const updateRole = (familyId: string, newRole: Role) => {
-  if (!tripData) return;
-  const k = getKFromUrl();
-  if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+    if (!tripData) return;
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
 
-  const targetFamily = tripData.families.find(f => f.id === familyId);
-  if (!targetFamily) return;
+    const targetFamily = tripData.families.find(f => f.id === familyId);
+    if (!targetFamily) return;
 
-  if (targetFamily.role === Role.ADMIN && newRole !== Role.ADMIN) {
-    const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
-    if (adminCount <= 1) {
-      return alert('Debe existir al menos un administrador en el viaje.');
+    if (targetFamily.role === Role.ADMIN && newRole !== Role.ADMIN) {
+      const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
+      if (adminCount <= 1) {
+        return alert('Debe existir al menos un administrador en el viaje.');
+      }
     }
-  }
 
-  const updatedFamilies = tripData.families.map(f =>
-    f.id === familyId ? { ...f, role: newRole } : f
-  );
+    const updatedFamilies = tripData.families.map(f =>
+      f.id === familyId ? { ...f, role: newRole } : f
+    );
 
-  saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
-};
+    saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
+  };
 
   const updateFamilyCount = (familyId: string, count: number) => {
     if (!tripData) return;
@@ -279,46 +269,43 @@ const App: React.FC = () => {
   };
 
   const deleteFamily = (familyId: string) => {
-  if (!tripData) return;
-  const k = getKFromUrl();
-  if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+    if (!tripData) return;
+    const k = getKFromUrl();
+    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
 
-  const family = tripData.families.find(f => f.id === familyId);
-  if (!family) return;
+    const family = tripData.families.find(f => f.id === familyId);
+    if (!family) return;
 
-  // No permitir borrar si es la única familia
-  if (tripData.families.length <= 1) {
-    return alert('No puedes eliminar la única familia del viaje.');
-  }
-
-  // Si es admin, obligamos a que quede al menos otro admin
-  if (family.role === Role.ADMIN) {
-    const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
-    if (adminCount <= 1) {
-      return alert('No puedes eliminar al único administrador del viaje. Asigna antes otro administrador.');
+    if (tripData.families.length <= 1) {
+      return alert('No puedes eliminar la única familia del viaje.');
     }
-  }
 
-  const updatedFamilies = tripData.families.filter(f => f.id !== familyId);
-  const updatedExpenses = tripData.expenses.filter(e => e.familyId !== familyId);
+    if (family.role === Role.ADMIN) {
+      const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
+      if (adminCount <= 1) {
+        return alert('No puedes eliminar al único administrador del viaje. Asigna antes otro administrador.');
+      }
+    }
 
-  const updatedTrip = {
-    ...tripData,
-    families: updatedFamilies,
-    expenses: updatedExpenses
+    const updatedFamilies = tripData.families.filter(f => f.id !== familyId);
+    const updatedExpenses = tripData.expenses.filter(e => e.familyId !== familyId);
+
+    const updatedTrip = {
+      ...tripData,
+      families: updatedFamilies,
+      expenses: updatedExpenses
+    };
+
+    saveGroup(updatedTrip, k).catch(console.error);
+
+    if (currentFamilyId === familyId) {
+      const fallbackFamilyId = updatedFamilies[0]?.id || null;
+      setCurrentFamilyId(fallbackFamilyId);
+      if (fallbackFamilyId) {
+        localStorage.setItem(`last_family_${tripData.id}`, fallbackFamilyId);
+      }
+    }
   };
-
-  saveGroup(updatedTrip, k).catch(console.error);
-
-  // Si borras la familia seleccionada actualmente, cambia a otra
-  if (currentFamilyId === familyId) {
-    const fallbackFamilyId = updatedFamilies[0]?.id || null;
-    setCurrentFamilyId(fallbackFamilyId);
-    if (fallbackFamilyId) {
-      localStorage.setItem(`last_family_${tripData.id}`, fallbackFamilyId);
-    }
-  }
-};
 
   const toggleSettlement = (transferKey: string) => {
     if (!tripData) return;
@@ -339,7 +326,6 @@ const App: React.FC = () => {
       } catch {}
     }
 
-    // Soporta enlaces compartidos nuevos: ?id=XXXX&k=YYYY
     const sp = new URL(window.location.href).searchParams;
     const id = sp.get('id');
     const k = sp.get('k');
@@ -352,7 +338,6 @@ const App: React.FC = () => {
       return;
     }
 
-    // Compatibilidad mínima con enlaces antiguos #group_XXXX
     const hash = window.location.hash.replace('#', '');
     if (hash && hash.startsWith('group_')) {
       const gId = hash.replace('group_', '');
@@ -434,8 +419,6 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-// --- SUB-COMPONENTS ---
 
 const Header: React.FC<{ tripName: string; groupId: string; onExit: () => void }> = ({ tripName, groupId, onExit }) => {
   const shareLink = async () => {
@@ -760,7 +743,6 @@ const WelcomeScreen: React.FC<{
   );
 };
 
-
 const Dashboard: React.FC<{ tripData: TripGroup; currentFamily: Family }> = ({ tripData, currentFamily }) => {
   const totalSpent = tripData.expenses.reduce((sum, e) => sum + e.amount, 0);
   const familySpent = tripData.expenses.filter(e => e.familyId === currentFamily.id).reduce((sum, e) => sum + e.amount, 0);
@@ -1049,6 +1031,7 @@ const SplitView: React.FC<{ tripData: TripGroup; onToggleSettlement: (key: strin
     </div>
   );
 };
+
 const SettingsView: React.FC<{
   tripData: TripGroup;
   isAdmin: boolean;
@@ -1058,7 +1041,16 @@ const SettingsView: React.FC<{
   onDeleteFamily: (fid: string) => void;
   onDeleteTrip: () => void;
   currentFamilyId: string;
-}> = ({ tripData, isAdmin, onUpdateRole, onUpdateCount, onAddFamily, onDeleteFamily, onDeleteTrip, currentFamilyId }) => {
+}> = ({
+  tripData,
+  isAdmin,
+  onUpdateRole,
+  onUpdateCount,
+  onAddFamily,
+  onDeleteFamily,
+  onDeleteTrip,
+  currentFamilyId
+}) => {
   const [newFamily, setNewFamily] = useState({ name: '', members: 1 });
   const [showAdd, setShowAdd] = useState(false);
 
@@ -1067,38 +1059,83 @@ const SettingsView: React.FC<{
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">Grupo</h2>
         {isAdmin && (
-          <button onClick={() => setShowAdd(!showAdd)} className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100">
+          <button
+            onClick={() => setShowAdd(!showAdd)}
+            className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100"
+          >
             <Plus size={24} />
           </button>
         )}
       </div>
+
       {showAdd && isAdmin && (
         <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-100 shadow-xl space-y-4 animate-in zoom-in-95 duration-200">
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Nueva Familia</h3>
-          <input className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 outline-none" placeholder="Apellido..." value={newFamily.name} onChange={e => setNewFamily({ ...newFamily, name: e.target.value })} />
+
+          <input
+            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 outline-none"
+            placeholder="Apellido..."
+            value={newFamily.name}
+            onChange={e => setNewFamily({ ...newFamily, name: e.target.value })}
+          />
+
           <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl">
             <span className="text-xs font-bold text-slate-500 ml-2">Miembros</span>
             <div className="flex items-center gap-3">
-              <button onClick={() => setNewFamily({ ...newFamily, members: Math.max(1, newFamily.members - 1) })} className="w-10 h-10 rounded-lg bg-white border border-slate-200 font-bold">-</button>
+              <button
+                onClick={() => setNewFamily({ ...newFamily, members: Math.max(1, newFamily.members - 1) })}
+                className="w-10 h-10 rounded-lg bg-white border border-slate-200 font-bold"
+              >
+                -
+              </button>
               <span className="font-black">{newFamily.members}</span>
-              <button onClick={() => setNewFamily({ ...newFamily, members: newFamily.members + 1 })} className="w-10 h-10 rounded-lg bg-white border border-slate-200 font-bold">+</button>
+              <button
+                onClick={() => setNewFamily({ ...newFamily, members: newFamily.members + 1 })}
+                className="w-10 h-10 rounded-lg bg-white border border-slate-200 font-bold"
+              >
+                +
+              </button>
             </div>
           </div>
-          <button onClick={() => { if (newFamily.name) { onAddFamily(newFamily.name, newFamily.members); setNewFamily({ name: '', members: 1 }); setShowAdd(false); } }} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl">Registrar</button>
+
+          <button
+            onClick={() => {
+              if (newFamily.name) {
+                onAddFamily(newFamily.name, newFamily.members);
+                setNewFamily({ name: '', members: 1 });
+                setShowAdd(false);
+              }
+            }}
+            className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl"
+          >
+            Registrar
+          </button>
         </div>
       )}
+
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden divide-y divide-slate-50">
-        <div className="p-6"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Miembros</h3></div>
+        <div className="p-6">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Miembros</h3>
+        </div>
+
         {tripData.families.map(f => (
           <div key={f.id} className="p-6 space-y-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl ${f.id === currentFamilyId ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-300'}`}>{f.name.charAt(0).toUpperCase()}</div>
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl ${
+                    f.id === currentFamilyId ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-300'
+                  }`}
+                >
+                  {f.name.charAt(0).toUpperCase()}
+                </div>
+
                 <div>
                   <h4 className="font-black text-slate-800 leading-none mb-1">{f.name}</h4>
                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{f.role}</p>
                 </div>
               </div>
+
               <div className="flex items-center gap-2">
                 {isAdmin ? (
                   <select
@@ -1114,7 +1151,7 @@ const SettingsView: React.FC<{
                     Lock
                   </span>
                 )}
-              
+
                 {isAdmin && (
                   <button
                     onClick={() => {
@@ -1128,28 +1165,49 @@ const SettingsView: React.FC<{
                     <Trash2 size={16} />
                   </button>
                 )}
+              </div>
             </div>
+
             <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl">
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Miembros:</span>
               <div className="flex items-center gap-4">
-                <button disabled={!isAdmin && f.id !== currentFamilyId} onClick={() => onUpdateCount(f.id, Math.max(1, f.memberCount - 1))} className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500">-</button>
+                <button
+                  disabled={!isAdmin && f.id !== currentFamilyId}
+                  onClick={() => onUpdateCount(f.id, Math.max(1, f.memberCount - 1))}
+                  className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500"
+                >
+                  -
+                </button>
                 <span className="font-black text-lg w-4 text-center">{f.memberCount}</span>
-                <button disabled={!isAdmin && f.id !== currentFamilyId} onClick={() => onUpdateCount(f.id, f.memberCount + 1)} className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500">+</button>
+                <button
+                  disabled={!isAdmin && f.id !== currentFamilyId}
+                  onClick={() => onUpdateCount(f.id, f.memberCount + 1)}
+                  className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500"
+                >
+                  +
+                </button>
               </div>
             </div>
           </div>
         ))}
       </div>
+
       <div className="bg-indigo-600 p-8 rounded-[2rem] text-white shadow-2xl flex items-center justify-between">
         <div className="space-y-1">
           <h4 className="text-xl font-black tracking-tight">ID</h4>
           <p className="text-xs text-indigo-200 font-bold">Para invitar.</p>
         </div>
-        <div className="bg-white/20 backdrop-blur-md px-5 py-3 rounded-2xl font-mono font-black text-2xl tracking-widest">{tripData.id}</div>
+        <div className="bg-white/20 backdrop-blur-md px-5 py-3 rounded-2xl font-mono font-black text-2xl tracking-widest">
+          {tripData.id}
+        </div>
       </div>
+
       {isAdmin && (
         <div className="pt-6">
-          <button onClick={onDeleteTrip} className="w-full flex items-center justify-center gap-2 bg-rose-50 text-rose-600 font-black py-5 rounded-[2rem] border border-rose-100 hover:bg-rose-100">
+          <button
+            onClick={onDeleteTrip}
+            className="w-full flex items-center justify-center gap-2 bg-rose-50 text-rose-600 font-black py-5 rounded-[2rem] border border-rose-100 hover:bg-rose-100"
+          >
             <Trash size={20} />
             <span>ELIMINAR VIAJE</span>
           </button>
