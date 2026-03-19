@@ -265,6 +265,48 @@ const App: React.FC = () => {
     saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
   };
 
+  const deleteFamily = (familyId: string) => {
+  if (!tripData) return;
+  const k = getKFromUrl();
+  if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
+  const family = tripData.families.find(f => f.id === familyId);
+  if (!family) return;
+
+  // No permitir borrar si es la única familia
+  if (tripData.families.length <= 1) {
+    return alert('No puedes eliminar la única familia del viaje.');
+  }
+
+  // Si es admin, obligamos a que quede al menos otro admin
+  if (family.role === Role.ADMIN) {
+    const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
+    if (adminCount <= 1) {
+      return alert('No puedes eliminar al único administrador del viaje. Asigna antes otro administrador.');
+    }
+  }
+
+  const updatedFamilies = tripData.families.filter(f => f.id !== familyId);
+  const updatedExpenses = tripData.expenses.filter(e => e.familyId !== familyId);
+
+  const updatedTrip = {
+    ...tripData,
+    families: updatedFamilies,
+    expenses: updatedExpenses
+  };
+
+  saveGroup(updatedTrip, k).catch(console.error);
+
+  // Si borras la familia seleccionada actualmente, cambia a otra
+  if (currentFamilyId === familyId) {
+    const fallbackFamilyId = updatedFamilies[0]?.id || null;
+    setCurrentFamilyId(fallbackFamilyId);
+    if (fallbackFamilyId) {
+      localStorage.setItem(`last_family_${tripData.id}`, fallbackFamilyId);
+    }
+  }
+};
+
   const toggleSettlement = (transferKey: string) => {
     if (!tripData) return;
     const k = getKFromUrl();
