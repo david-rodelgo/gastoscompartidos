@@ -248,9 +248,27 @@ const App: React.FC = () => {
   };
 
   const updateRole = (familyId: string, newRole: Role) => {
-    if (!tripData) return;
-    const k = getKFromUrl();
-    if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+  if (!tripData) return;
+  const k = getKFromUrl();
+  if (!k) return alert('Falta la clave (k). Abre el viaje desde un enlace válido o desde "Mis viajes".');
+
+  const targetFamily = tripData.families.find(f => f.id === familyId);
+  if (!targetFamily) return;
+
+  // No permitir quitar el rol admin al último administrador
+  if (targetFamily.role === Role.ADMIN && newRole !== Role.ADMIN) {
+    const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
+    if (adminCount <= 1) {
+      return alert('Debe existir al menos un administrador en el viaje.');
+    }
+  }
+
+  const updatedFamilies = tripData.families.map(f =>
+    f.id === familyId ? { ...f, role: newRole } : f
+  );
+
+  saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
+};
 
     const updatedFamilies = tripData.families.map(f => (f.id === familyId ? { ...f, role: newRole } : f));
     saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
@@ -405,6 +423,7 @@ const App: React.FC = () => {
             onUpdateRole={updateRole}
             onUpdateCount={updateFamilyCount}
             onAddFamily={addFamilyToGroup}
+            onDeleteFamily={deleteFamily}
             onDeleteTrip={() => deleteTripFromMyList(tripData!.id)}
             currentFamilyId={currentFamily?.id || ''}
           />
@@ -1035,16 +1054,16 @@ const SplitView: React.FC<{ tripData: TripGroup; onToggleSettlement: (key: strin
     </div>
   );
 };
-
 const SettingsView: React.FC<{
   tripData: TripGroup;
   isAdmin: boolean;
   onUpdateRole: (fid: string, r: Role) => void;
   onUpdateCount: (fid: string, c: number) => void;
   onAddFamily: (name: string, members: number) => void;
+  onDeleteFamily: (fid: string) => void;
   onDeleteTrip: () => void;
   currentFamilyId: string;
-}> = ({ tripData, isAdmin, onUpdateRole, onUpdateCount, onAddFamily, onDeleteTrip, currentFamilyId }) => {
+}> = ({ tripData, isAdmin, onUpdateRole, onUpdateCount, onAddFamily, onDeleteFamily, onDeleteTrip, currentFamilyId }) => {
   const [newFamily, setNewFamily] = useState({ name: '', members: 1 });
   const [showAdd, setShowAdd] = useState(false);
 
@@ -1085,13 +1104,34 @@ const SettingsView: React.FC<{
                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{f.role}</p>
                 </div>
               </div>
-              {isAdmin && f.id !== tripData.adminId ? (
-                <select className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none" value={f.role} onChange={e => onUpdateRole(f.id, e.target.value as Role)}>
-                  <option value={Role.USER}>Usuario</option>
-                  <option value={Role.ADMIN}>Admin</option>
-                </select>
-              ) : (
-                <span className="text-[10px] font-black tracking-widest uppercase bg-slate-50 px-3 py-1.5 rounded-lg text-slate-400">Lock</span>
+              <div className="flex items-center gap-2">
+  {isAdmin ? (
+    <select
+      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none"
+      value={f.role}
+      onChange={e => onUpdateRole(f.id, e.target.value as Role)}
+    >
+      <option value={Role.USER}>Usuario</option>
+      <option value={Role.ADMIN}>Admin</option>
+    </select>
+  ) : (
+    <span className="text-[10px] font-black tracking-widest uppercase bg-slate-50 px-3 py-1.5 rounded-lg text-slate-400">
+      Lock
+    </span>
+  )}
+
+  {isAdmin && (
+                <button
+                  onClick={() => {
+                    if (confirm(`¿Eliminar la familia ${f.name}? También se borrarán sus gastos.`)) {
+                      onDeleteFamily(f.id);
+                    }
+                  }}
+                  className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 hover:bg-rose-100"
+                  title="Eliminar familia"
+                >
+                  <Trash2 size={16} />
+                </button>
               )}
             </div>
             <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl">
