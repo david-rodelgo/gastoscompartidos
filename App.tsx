@@ -255,7 +255,6 @@ const App: React.FC = () => {
   const targetFamily = tripData.families.find(f => f.id === familyId);
   if (!targetFamily) return;
 
-  // No permitir quitar el rol admin al último administrador
   if (targetFamily.role === Role.ADMIN && newRole !== Role.ADMIN) {
     const adminCount = tripData.families.filter(f => f.role === Role.ADMIN).length;
     if (adminCount <= 1) {
@@ -269,10 +268,6 @@ const App: React.FC = () => {
 
   saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
 };
-
-    const updatedFamilies = tripData.families.map(f => (f.id === familyId ? { ...f, role: newRole } : f));
-    saveGroup({ ...tripData, families: updatedFamilies }, k).catch(console.error);
-  };
 
   const updateFamilyCount = (familyId: string, count: number) => {
     if (!tripData) return;
@@ -1105,34 +1100,34 @@ const SettingsView: React.FC<{
                 </div>
               </div>
               <div className="flex items-center gap-2">
-  {isAdmin ? (
-    <select
-      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none"
-      value={f.role}
-      onChange={e => onUpdateRole(f.id, e.target.value as Role)}
-    >
-      <option value={Role.USER}>Usuario</option>
-      <option value={Role.ADMIN}>Admin</option>
-    </select>
-  ) : (
-    <span className="text-[10px] font-black tracking-widest uppercase bg-slate-50 px-3 py-1.5 rounded-lg text-slate-400">
-      Lock
-    </span>
-  )}
-
-  {isAdmin && (
-                <button
-                  onClick={() => {
-                    if (confirm(`¿Eliminar la familia ${f.name}? También se borrarán sus gastos.`)) {
-                      onDeleteFamily(f.id);
-                    }
-                  }}
-                  className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 hover:bg-rose-100"
-                  title="Eliminar familia"
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
+                {isAdmin ? (
+                  <select
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest outline-none"
+                    value={f.role}
+                    onChange={e => onUpdateRole(f.id, e.target.value as Role)}
+                  >
+                    <option value={Role.USER}>Usuario</option>
+                    <option value={Role.ADMIN}>Admin</option>
+                  </select>
+                ) : (
+                  <span className="text-[10px] font-black tracking-widest uppercase bg-slate-50 px-3 py-1.5 rounded-lg text-slate-400">
+                    Lock
+                  </span>
+                )}
+              
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`¿Eliminar la familia ${f.name}? También se borrarán sus gastos.`)) {
+                        onDeleteFamily(f.id);
+                      }
+                    }}
+                    className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 hover:bg-rose-100"
+                    title="Eliminar familia"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
             </div>
             <div className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl">
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Miembros:</span>
